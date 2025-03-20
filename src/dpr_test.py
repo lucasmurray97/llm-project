@@ -4,16 +4,11 @@ import numpy as np
 import torch
 import ir_datasets
 from tqdm import tqdm
+import random
+import json
 
 # Load the TREC CAsT 2020 dataset
-dataset = ir_datasets.load("trec-cast/v1/2020")
-qrels = {}
-
-for qrel in dataset.qrels_iter():
-    if qrel.query_id not in qrels:
-        qrels[qrel.query_id] = set()
-    qrels[qrel.query_id].add(qrel.doc_id)  # Use `doc_id` instead of `relevant_doc_ids`
-
+dataset = ir_datasets.load("msmarco-passage/dev")  # Use train set
 
 # Load DPR question encoder
 question_encoder = DPRQuestionEncoder.from_pretrained("facebook/dpr-question_encoder-single-nq-base")
@@ -24,39 +19,41 @@ context_encoder = DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-si
 context_tokenizer = DPRContextEncoderTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
 
 
-passages = [
-    "COVID-19 symptoms include fever, cough, and difficulty breathing.",
-    "Common symptoms are fever, tiredness, and dry cough.",
-    "Some may experience loss of taste or smell."
-]
+# Load the tensors
+doc_embeddings = torch.load("doc_embeddings.pt")
+doc_ids = torch.load("doc_ids.pt")
+q_embeddings = torch.load("q_embeddings.pt")
+qrels = torch.load("q_rel_docs.pt")
 
-# Encode passages
-doc_embeddings = []
-for passage in passages:
-    inputs = context_tokenizer(passage, return_tensors="pt")
-    doc_embedding = context_encoder(**inputs).pooler_output.detach().numpy()
-    doc_embeddings.append(doc_embedding)
 
-# Convert to FAISS index
-doc_embeddings = np.vstack(doc_embeddings)
-dimension = doc_embeddings.shape[1]
+# Convert to FAISS
+filtered_doc_embeddings = np.vstack(doc_embeddings)
+dimension = filtered_doc_embeddings.shape[1]
+faiss.normalize_L2(doc_embeddings.numpy())
 faiss_index = faiss.IndexFlatIP(dimension)
-faiss_index.add(doc_embeddings)
+faiss_index.add(filtered_doc_embeddings)
+
+print(f"Number of docs in FAISS: {faiss_index.ntotal}")
+print(f"Number of doc IDs: {len(doc_ids)}")
+
 
 
 def retrieve_dpr(query, k=10):
+    # print("Query: ", query)
     # Encode query
-    inputs = question_tokenizer(query, return_tensors="pt")
+    inputs = question_tokenizer(query, return_tensors="pt", truncation=True, max_length=512)
     query_embedding = question_encoder(**inputs).pooler_output.detach().numpy()
 
     # Search in FAISS
     D, I = faiss_index.search(query_embedding, k)
     
-    # Return results
-    return [(passages[i], D[0][j]) for j, i in enumerate(I[0])]
+    # Return document IDs instead of passages
+    return [(doc_ids[i], D[0][j]) for j, i in enumerate(I[0])]
+
 
 
 def compute_top_k_accuracy(retrieved_docs, relevant_docs, k):
+    # print("Retrieved Docs: ", retrieved_docs)
     """
     Computes the Top-K accuracy for retrieval results.
     
@@ -67,7 +64,8 @@ def compute_top_k_accuracy(retrieved_docs, relevant_docs, k):
     """
     return int(any(docid in relevant_docs for docid in retrieved_docs[:k]))
 
-def evaluate_top_k(model_func, dataset, k=20, num_queries=100):
+def evaluate_top_k(model_func, dataset, k=20):
+    print("Evaluating Top-K")
     """
     Evaluates a retrieval model using Top-K accuracy.
     
@@ -80,22 +78,36 @@ def evaluate_top_k(model_func, dataset, k=20, num_queries=100):
     top_k_total = 0
     count = 0
 
-    for query in tqdm(dataset.queries_iter()):
-        if count >= num_queries:
-            break
+    for query in tqdm(dataset, desc="Evaluating", total=len(dataset)):
         
-        retrieved_docs = [doc[0] for doc in model_func(query.raw_utterance, k=k)]
-        relevant_docs = qrels.get(query.query_id, set())
+        retrieved_docs = [doc[0] for doc in model_func(query.text, k=k)]
+        relevant_docs = qrels.get(query.query_id, set())  # Ensure qrels uses doc IDs
+        # Check if relelevant docs are in the all the docs
 
+
+        # print(f"Query: {query.text}")
+        # print(f"Retrieved Docs: {retrieved_docs}")
+        # print(f"Relevant Docs: {relevant_docs}")
         top_k_total += compute_top_k_accuracy(retrieved_docs, relevant_docs, k)
         count += 1
 
     return top_k_total / count  # Compute average accuracy
 
 # Compute Top-20 and Top-100 accuracy
+queries = []
+for query in dataset.queries_iter():
+    if query.query_id in qrels.keys():
+        queries.append(query)
+        if len(queries) == len(qrels):
+            break
 
-top_20_dpr = evaluate_top_k(retrieve_dpr, dataset, k=20)
-top_100_dpr = evaluate_top_k(retrieve_dpr, dataset, k=100)
+# Check if relevant docs are in the all the doc_ids iterate over the queries
+for query in queries:
+    relevant_docs = set(qrels[query.query_id])
+    # print(f"Intersection: {relevant_docs.intersection(set(doc_ids))}")
+
+top_20_dpr = evaluate_top_k(retrieve_dpr, queries, k=20)
+top_100_dpr = evaluate_top_k(retrieve_dpr, queries, k=100)
 
 
 # Print results

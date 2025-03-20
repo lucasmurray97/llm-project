@@ -18,7 +18,7 @@ for qrel in dataset.qrels_iter():
         qrels[qrel.query_id] = set()
         n += 1
     qrels[qrel.query_id].add(qrel.doc_id)
-    if n == 100:
+    if n == 1000:
         break
 # get rid of empty queries
 qrels = {k: v for k, v in qrels.items() if v}
@@ -44,4 +44,81 @@ filtered_doc_ids = {"relevant": list(relevant_docs), "irrelevant": list(selected
 with open("filtered_doc_ids_ms.json", "w") as f:
     json.dump(filtered_doc_ids, f)
 
+# set from filtered doc ids
+relevant_docs = set(filtered_doc_ids["relevant"]) 
+selected_irrelevant_docs = set(filtered_doc_ids["irrelevant"])
+
+# Merge docs
+all_selected_docs = relevant_docs.union(selected_irrelevant_docs)
+
 print("Filtered document IDs saved!")
+
+# Generating embeddings for documents
+
+# Load DPR question encoder
+question_encoder = DPRQuestionEncoder.from_pretrained("facebook/dpr-question_encoder-single-nq-base")
+question_tokenizer = DPRQuestionEncoderTokenizer.from_pretrained("facebook/dpr-question_encoder-single-nq-base")
+
+# Load DPR context encoder
+context_encoder = DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
+context_tokenizer = DPRContextEncoderTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
+
+
+doc_embeddings = []
+doc_ids = []
+
+for doc in tqdm(dataset.docs_iter(), desc="Processing Filtered Docs", total=dataset.docs_count()):
+    if doc.doc_id in relevant_docs or doc.doc_id in selected_irrelevant_docs:
+        inputs = context_tokenizer(doc.text, return_tensors="pt", truncation=True, max_length=512)
+        doc_embedding = context_encoder(**inputs).pooler_output.detach()
+        
+        doc_embeddings.append(doc_embedding)
+        doc_ids.append(doc.doc_id)
+
+# Iterate over queries
+filtered_queries = list(qrels.keys())
+q_embeddings = []
+q_rel_docs = {}
+for query in dataset.queries_iter():
+    if query.query_id in filtered_queries:
+        q_rel_docs[query.query_id] = qrels[query.query_id]
+        inputs = question_tokenizer(query.text, return_tensors="pt", truncation=True, max_length=128)
+        q_embedding = question_encoder(**inputs).pooler_output.detach()
+        q_embeddings.append(q_embedding)
+
+# Convert lists to tensors
+doc_embeddings = torch.cat(doc_embeddings)  # Shape: (N, 768)
+q_embeddings = torch.cat(q_embeddings)  # Shape: (M, 768)
+
+# Save as .pt files
+torch.save(doc_embeddings, "doc_embeddings.pt")
+torch.save(doc_ids, "doc_ids.pt")
+torch.save(q_embeddings, "q_embeddings.pt")
+# Save q_rel_docs dictionary
+torch.save(q_rel_docs, "q_rel_docs.pt")
+
+
+# Sanity check:
+# Load the tensors
+doc_embeddings = torch.load("doc_embeddings.pt")
+doc_ids = torch.load("doc_ids.pt")
+q_embeddings = torch.load("q_embeddings.pt")
+q_rel_docs = torch.load("q_rel_docs.pt")
+
+# Check 
+filtered_queries = list(q_rel_docs.keys())
+queries = []
+for query in dataset.queries_iter():
+    if query.query_id in filtered_queries:
+        queries.append(query)
+        if len(queries) == len(filtered_queries):
+            break
+
+for query in queries:
+    relevant_docs = qrels.get(query.query_id, set())
+    inter_doc_ids = relevant_docs.intersection(set(doc_ids))
+    inter_gen_docs = relevant_docs.intersection(set(all_selected_docs))
+    if len(inter_doc_ids) != len(relevant_docs) or len(inter_gen_docs) != len(relevant_docs):
+        print(f"No relevant docs for query {query.query_id}")
+        print(len(inter_doc_ids), len(relevant_docs), len(inter_gen_docs))
+        raise ValueError("No relevant docs found!")
