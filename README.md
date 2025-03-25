@@ -1,4 +1,4 @@
-# Conversational Question Answering using Dense Passage Retrieval and Fine-tuning with LoRA
+# Open Question Answering using Dense Passage Retrieval and Fine-tuning with LoRA
 
 ## Overview
 
