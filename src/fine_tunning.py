@@ -16,7 +16,7 @@ import os
 
 # --- Configuración general ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 EPOCHS = 100
 NUM_NEGATIVES = 8
 
@@ -45,6 +45,9 @@ print("Construyendo dataset...")
 queries = torch.load("queries_random.pt")
 random_neg = torch.load("random_docs.pt")
 positives = torch.load("positive_docs.pt")
+print("Number of queries: ", len(queries))
+print("Number of random docs: ", len(random_neg))
+print("Number of positive docs: ", len(positives))
 
 train_data = []
 for q in positives:
@@ -59,6 +62,11 @@ for q in positives:
     })
 
 hf_dataset = Dataset.from_list(train_data)
+# divide in train/val
+train_size = int(0.8 * len(hf_dataset))
+val_size = len(hf_dataset) - train_size
+hf_dataset = hf_dataset.train_test_split(test_size=val_size, shuffle=True)
+
 
 # --- Collate function ---
 def collate_fn(batch):
@@ -69,13 +77,15 @@ def collate_fn(batch):
     q_tokens = question_tokenizer(queries, return_tensors="pt", padding=True, truncation=True)
     return q_tokens, pos_docs, neg_docs
 
-dataloader = DataLoader(hf_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
+dataloader = DataLoader(hf_dataset["train"], batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
+val_dataloader = DataLoader(hf_dataset["test"], batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
 optimizer = AdamW(question_encoder.parameters(), lr=2e-5)
 
 # --- Entrenamiento con Early Stopping ---
 print("Entrenando...")
 
 loss_holder = []
+val_loss_holder = []
 best_loss = float('inf')
 patience_counter = 0
 # Get current path
@@ -103,21 +113,43 @@ for epoch in range(EPOCHS):
         optimizer.step()
 
         total_loss += loss.item()
+    # add in validation
+    question_encoder.eval()
+    with torch.no_grad():
+        val_loss = 0
+        for batch in val_dataloader:
+            q_inputs, p_inputs, n_inputs = batch
+            q_inputs = {k: v.to(device) for k, v in q_inputs.items()}
+            pos_emb = torch.Tensor(p_inputs).to(device)
+            neg_emb = torch.Tensor(n_inputs).to(device)
+
+            q_emb = question_encoder(**q_inputs).pooler_output
+            scores_pos = torch.matmul(q_emb, pos_emb.T)
+            scores_neg = torch.matmul(q_emb, neg_emb.T)
+
+            logits = torch.cat([scores_pos.diag().unsqueeze(1), scores_neg], dim=1)
+            labels = torch.zeros(logits.size(0), dtype=torch.long).to(device)
+
+            loss = F.cross_entropy(logits, labels)
+            val_loss += loss.item()
 
     avg_loss = total_loss / len(dataloader)
+    avg_val_loss = val_loss / len(val_dataloader)
     print(f"Epoch {epoch+1} - Loss: {avg_loss:.4f}")
     loss_holder.append(avg_loss)
+    val_loss_holder.append(avg_val_loss)
 
     # Check for improvement
-    if avg_loss < best_loss:
-        best_loss = avg_loss
+    if avg_val_loss < best_loss:
+        best_loss = avg_val_loss
         patience_counter = 0
-        question_encoder.save_pretrained(save_path+"finetuned_model")
-        question_tokenizer.save_pretrained(save_path+"finetuned_model_token")
+        question_encoder.save_pretrained("models")
+        question_tokenizer.save_pretrained("models")
 
 
 # --- Gráfico de pérdida ---
 plt.plot(loss_holder)
+plt.plot(val_loss_holder)
 plt.xlabel("Epoch")
 plt.ylabel("Loss")
 plt.title("Training Loss")

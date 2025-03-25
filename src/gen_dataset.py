@@ -36,7 +36,7 @@ print(len(relevant_docs), "relevant documents found!")
 all_docs = set(doc.doc_id for doc in dataset.docs_iter())  # All available doc IDs
 irrelevant_docs = list(all_docs - relevant_docs)  # Remove relevant ones
 print(len(irrelevant_docs), "irrelevant documents found!")
-num_irrelevant = min(len(irrelevant_docs), 2 * len(relevant_docs))  # 5x irrelevant docs
+num_irrelevant = min(len(irrelevant_docs), 3 * len(relevant_docs))  # 5x irrelevant docs
 selected_irrelevant_docs = set(irrelevant_docs[:num_irrelevant])
 
 # Save the filtered document IDs to a JSON file

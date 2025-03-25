@@ -33,13 +33,12 @@ train_data_positive = {}
 q_rels = {i.query_id: i.doc_id for i in dataset.qrels_iter()}
 queries_random = {}
 inverse_queries_random = {}
-MAX_QUERIES = 1000
+MAX_QUERIES = 5000
 for query in tqdm(dataset.queries_iter(), total=dataset.queries_count()):
     if query.query_id in q_rels.keys():
-        text = query.text
         # get embeddings for positive documents
         num = random.random()
-        if num < 0.1:
+        if num < 0.05:
             text = query.text
             # get first relevant doc
             doc_id = q_rels[query.query_id]
@@ -47,7 +46,7 @@ for query in tqdm(dataset.queries_iter(), total=dataset.queries_count()):
             inverse_queries_random[doc_id] = query.query_id
             if len(queries_random) >= MAX_QUERIES:
                 break
-MAX_SAMPLES = 10000
+MAX_SAMPLES = 50000
 # Save queries_random
 torch.save(queries_random, "queries_random.pt")
 print("Generating pool of random documents")
@@ -59,7 +58,7 @@ for doc in tqdm(dataset.docs_iter(), total = dataset.docs_count()):
             doc_text = doc.text
             context_inputs = context_tokenizer(doc_text, return_tensors="pt", truncation=True, max_length=512).to(device)
             doc_embedding = context_encoder(**context_inputs).pooler_output.squeeze().cpu()
-            train_data_positive[doc.doc_id] = (inverse_queries_random[doc_id], doc_embedding)
+            train_data_positive[doc.doc_id] = (inverse_queries_random[doc.doc_id], doc_embedding)
             m += 1
             if m >= MAX_QUERIES:
                 break

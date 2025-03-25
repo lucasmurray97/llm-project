@@ -106,11 +106,19 @@ for query in queries:
     relevant_docs = set(qrels[query.query_id])
     # print(f"Intersection: {relevant_docs.intersection(set(doc_ids))}")
 
+top_5_dpr = evaluate_top_k(retrieve_dpr, queries, k=5)
+print(f"DPR Top-5 Accuracy: {top_5_dpr:.4f}")
 top_20_dpr = evaluate_top_k(retrieve_dpr, queries, k=20)
-top_100_dpr = evaluate_top_k(retrieve_dpr, queries, k=100)
-
-
-# Print results
 print(f"DPR Top-20 Accuracy: {top_20_dpr:.4f}")
+top_100_dpr = evaluate_top_k(retrieve_dpr, queries, k=100)
 print(f"DPR Top-100 Accuracy: {top_100_dpr:.4f}")
 
+# Save the results
+results = {
+    "DPR Top-5": top_5_dpr,
+    "DPR Top-20": top_20_dpr,
+    "DPR Top-100": top_100_dpr
+}
+
+with open("results_dpr.json", "w") as f:
+    json.dump(results, f)
