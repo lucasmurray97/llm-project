@@ -2,13 +2,13 @@
 
 ## Overview
 
-This project presents an implementation of a Conversational Question Answering (QA) system based on Dense Passage Retrieval (DPR), enhanced through fine-tuning with Low-Rank Adaptation (LoRA). Our approach builds upon the foundational work introduced by Karpukhin et al. in the paper ["Dense Passage Retrieval for Open-Domain Question Answering"](https://arxiv.org/pdf/2004.04906).
+This project presents an implementation of a Open Question Answering (QA) system based on Dense Passage Retrieval (DPR), enhanced through fine-tuning with Low-Rank Adaptation (LoRA). Our approach builds upon the foundational work introduced by Karpukhin et al. in the paper ["Dense Passage Retrieval for Open-Domain Question Answering"](https://arxiv.org/pdf/2004.04906).
 
-Dense Passage Retrieval significantly improves open-domain QA by effectively encoding and retrieving relevant passages from large textual corpora. This project adapts DPR specifically to conversational contexts, where subsequent questions rely on the conversational history. Furthermore, we employ LoRA for efficient parameter-efficient fine-tuning, thereby improving the model's performance with minimal computational overhead.
+Dense Passage Retrieval significantly improves open-domain QA by effectively encoding and retrieving relevant passages from large textual corpora. By fine-tuning the DPR model with LoRA, we aim to optimize the efficiency and performance of the system, enhancing its ability to accurately answer conversational questions.
 
 ## Objectives
 
-- Evaluate DPR adapted for Conversational Question Answering scenarios.
+- Evaluate DPR adapted for Open Question Answering scenarios.
 - Optimize fine-tuning efficiency through Low-Rank Adaptation (LoRA).
 - Evaluate and compare the performance improvements achieved through fine-tuning.
 
@@ -33,7 +33,7 @@ This approach allows rapid, scalable retrieval of passages relevant to the input
 
 ## Results
 
-Fine-tuning DPR with LoRA demonstrated improvements over the baseline, validating the effectiveness of the approach presented in the original paper.
+Fine-tuning DPR with LoRA demonstrated improvements over the baseline.
 
 
 
