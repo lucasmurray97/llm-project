@@ -21,10 +21,6 @@ DPR consists of two main components:
 
 This approach allows rapid, scalable retrieval of passages relevant to the input queries.
 
-### Conversational Adaptation
-- Incorporates conversational history to better understand the context of follow-up questions.
-- Utilizes concatenated conversational context embeddings to refine query representations.
-
 ### Fine-Tuning with LoRA
 - Low-Rank Adaptation (LoRA) introduces trainable, low-rank matrices to existing pretrained models.
 - Efficiently fine-tunes DPR models, significantly reducing computational cost and resource usage.
